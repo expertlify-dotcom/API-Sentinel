@@ -1,0 +1,8 @@
+{
+  "name": "API & Credential Auditing Tool",
+  "description": "An in-house security scanner to audit codebases and websites for embedded API endpoints, hardcoded credentials, and communication security.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
