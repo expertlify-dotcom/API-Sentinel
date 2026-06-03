@@ -2,7 +2,7 @@ import { useState, useRef, DragEvent, ChangeEvent, FormEvent } from 'react';
 import { Globe, Code, UploadCloud, FileCode, Play, AlertCircle, Sparkles } from 'lucide-react';
 
 interface ScannerFormProps {
-  onScanUrl: (url: string) => void;
+  onScanUrl: (url: string | string[]) => void;
   onScanCode: (files: { name: string; content: string }[]) => void;
   isLoading: boolean;
 }
@@ -91,7 +91,9 @@ export default function ScannerForm({ onScanUrl, onScanCode, isLoading }: Scanne
   const [activeTab, setActiveTab] = useState<'url' | 'code' | 'upload'>('url');
   
   // URL Scan state
+  const [urlMode, setUrlMode] = useState<'single' | 'batch'>('single');
   const [urlInput, setUrlInput] = useState('');
+  const [batchUrlsInput, setBatchUrlsInput] = useState('');
   
   // Code Snippet state
   const [pastedCode, setPastedCode] = useState(TEMPLATES[0].content);
@@ -105,8 +107,17 @@ export default function ScannerForm({ onScanUrl, onScanCode, isLoading }: Scanne
   // Trigger scans
   const handleUrlSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (!urlInput.trim()) return;
-    onScanUrl(urlInput);
+    if (urlMode === 'single') {
+      if (!urlInput.trim()) return;
+      onScanUrl(urlInput.trim());
+    } else {
+      const parsedUrls = batchUrlsInput
+        .split(/[\n,]+/)
+        .map(u => u.trim())
+        .filter(Boolean);
+      if (parsedUrls.length === 0) return;
+      onScanUrl(parsedUrls);
+    }
   };
 
   const handleCodeSubmit = () => {
@@ -228,9 +239,9 @@ export default function ScannerForm({ onScanUrl, onScanCode, isLoading }: Scanne
           <div className="space-y-4 animate-fadeIn">
             <div className="rounded-lg bg-indigo-50 border border-indigo-100/60 p-4">
               <div className="flex space-x-3">
-                <Sparkles className="mt-0.5 h-4 w-4 text-indigo-600 shrink-0" />
+                <Sparkles className="mt-0.5 h-4.5 w-4.5 text-indigo-600 shrink-0" />
                 <div>
-                  <h3 className="text-xs font-semibold text-indigo-900">Cognitive Landing Page Sniffer</h3>
+                  <h3 className="text-xs font-semibold text-indigo-900">Cognitive Landing Page Sniffer & Audit Suite</h3>
                   <p className="mt-1 text-xs text-indigo-700 leading-relaxed">
                     Analyzing contractor-hosted sites detects unmasked client-side API integrations (Google Maps, Firebase keys, Segment analytics, tracking codes) and audits secure TLS configurations.
                   </p>
@@ -238,35 +249,107 @@ export default function ScannerForm({ onScanUrl, onScanCode, isLoading }: Scanne
               </div>
             </div>
 
-            <form onSubmit={handleUrlSubmit} className="space-y-4">
+            {/* Mode Switcher */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <label htmlFor="url-input" className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Target Website URL
-                </label>
-                <div className="relative mt-2 rounded-xl shadow-xs">
-                  <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                    <Globe className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    type="text"
-                    id="url-input"
-                    value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
-                    placeholder="e.g. corporate-locator.net or https://mycorp-app.cloud.run"
-                    disabled={isLoading}
-                    className="block w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 text-sm text-slate-950 placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60"
-                  />
-                </div>
+                <span className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Scanning Mode
+                </span>
+                <span className="text-[11px] text-slate-500">
+                  Choose single site or parallel bulk audit
+                </span>
               </div>
+              <div className="flex rounded-lg bg-slate-100/80 p-0.5 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('single')}
+                  className={`rounded-md px-3.5 py-1 text-xs font-bold transition-all ${
+                    urlMode === 'single'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  } cursor-pointer`}
+                >
+                  Single Target
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUrlMode('batch')}
+                  className={`rounded-md px-3.5 py-1 text-xs font-bold transition-all ${
+                    urlMode === 'batch'
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  } cursor-pointer`}
+                >
+                  Batch Multi-Sites
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleUrlSubmit} className="space-y-4">
+              {urlMode === 'single' ? (
+                <div>
+                  <label htmlFor="url-input" className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Target Website URL
+                  </label>
+                  <div className="relative mt-2 rounded-xl shadow-xs">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                      <Globe className="h-5 w-5 text-slate-400" />
+                    </div>
+                    <input
+                      type="text"
+                      id="url-input"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      placeholder="e.g. corporate-locator.net or https://mycorp-app.cloud.run"
+                      disabled={isLoading}
+                      className="block w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 text-sm text-slate-950 placeholder-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-60"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 animate-fadeIn">
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="batch-urls-textarea" className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                      Target Websites (One per line or comma separated)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setBatchUrlsInput("demo-payment-v2.net\ncorp-store-locator.org\nfirebase-internal-gateway.io")}
+                      className="text-[11px] font-semibold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      Load demo target batch
+                    </button>
+                  </div>
+                  <textarea
+                    id="batch-urls-textarea"
+                    rows={5}
+                    value={batchUrlsInput}
+                    onChange={(e) => setBatchUrlsInput(e.target.value)}
+                    placeholder="e.g.&#10;corporate-locator.net&#10;mycorp-web-portal.com&#10;contractor-sandbox.io"
+                    disabled={isLoading}
+                    className="w-full rounded-xl border border-slate-300 font-mono text-xs p-3.5 text-slate-950 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 bg-white placeholder-slate-400"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium pb-1.5">
+                    <span>Audit up to 5 domains of public landing pages in parallel.</span>
+                    <span className="font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md">
+                      {batchUrlsInput.split(/[\n,]+/).map(u => u.trim()).filter(Boolean).length} targets entered
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"
-                disabled={isLoading || !urlInput.trim()}
+                disabled={isLoading || (urlMode === 'single' ? !urlInput.trim() : !batchUrlsInput.trim())}
                 className="flex w-full items-center justify-center space-x-2 rounded-xl bg-slate-900 py-3 text-sm font-bold text-white shadow-md hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 transition-colors cursor-pointer"
                 id="btn-trigger-url-scan"
               >
                 <Play className="h-4 w-4" />
-                <span>{isLoading ? 'Running Compliance Audit...' : 'Start Audit Sniffing'}</span>
+                <span>
+                  {isLoading 
+                    ? (urlMode === 'batch' ? 'Executing Concurrent Batch Scans...' : 'Running Compliance Audit...')
+                    : (urlMode === 'batch' ? 'Launch Batch Network Audit' : 'Start Audit Sniffing')}
+                </span>
               </button>
             </form>
           </div>

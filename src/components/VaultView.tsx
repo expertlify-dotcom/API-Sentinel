@@ -2,8 +2,9 @@ import { useState, useEffect, FormEvent } from 'react';
 import { VaultItem } from '../types';
 import { 
   Lock, Unlock, ShieldAlert, KeyRound, Eye, EyeOff, Save, 
-  Trash2, Plus, CheckCircle, HelpCircle, FileJson, FileEdit, AlertCircle
+  Trash2, Plus, CheckCircle, HelpCircle, FileJson, FileEdit, AlertCircle, Sparkles, Layers, Cloud, Code
 } from 'lucide-react';
+import { PARENT_CATEGORIES, getParentCategory, CategoryKey } from '../utils/categoryHelper';
 
 interface VaultViewProps {
   onAddManualItem?: (item: VaultItem) => void;
@@ -15,6 +16,9 @@ export default function VaultView({}: VaultViewProps) {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   
+  // Category filter state
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'all' | CategoryKey>('all');
+
   // Custom configured Admin PIN
   const [adminPin, setAdminPin] = useState(() => {
     return localStorage.getItem('sentry_admin_pin') || 'admin123';
@@ -34,7 +38,7 @@ export default function VaultView({}: VaultViewProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newKeyForm, setNewKeyForm] = useState({
     title: '',
-    category: 'Custom API Key',
+    category: 'Client / IDE API',
     secretValue: '',
     origin: '',
     severity: 'high' as const,
@@ -164,6 +168,11 @@ export default function VaultView({}: VaultViewProps) {
     setRevealedSecrets(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const filteredVaultItems = vaultItems.filter(item => {
+    if (selectedCategoryFilter === 'all') return true;
+    return getParentCategory(item.category, item.title, item.secretValue) === selectedCategoryFilter;
+  });
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm min-h-[500px]">
       
@@ -283,6 +292,140 @@ export default function VaultView({}: VaultViewProps) {
             </div>
           </div>
 
+          {/* Category Filter Metrics & Navigation Tabs */}
+          <div className="bg-slate-50/85 border border-slate-200 rounded-xl p-4.5 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 border-b border-slate-200 pb-2">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                Administrative Classification Filter
+              </span>
+              <span className="text-[11px] text-slate-500 font-bold bg-slate-200/50 px-2 py-0.5 rounded-md">
+                Showing {filteredVaultItems.length} of {vaultItems.length} escrowed secrets
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {/* ALL */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('all')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'all'
+                    ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100/80'
+                }`}
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                <span>All Secrets</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'all' ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {vaultItems.length}
+                </span>
+              </button>
+
+              {/* Client / IDE API */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('client_ide')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'client_ide'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-705 hover:bg-slate-100/80'
+                }`}
+              >
+                <Code className="h-3.5 w-3.5" />
+                <span>Client / IDE API</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'client_ide' ? 'bg-emerald-800 text-emerald-200' : 'bg-emerald-50 text-emerald-700'
+                }`}>
+                  {vaultItems.filter(item => getParentCategory(item.category, item.title, item.secretValue) === 'client_ide').length}
+                </span>
+              </button>
+
+              {/* Backend Firebase API */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('firebase')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'firebase'
+                    ? 'bg-orange-600 border-orange-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-755 hover:bg-slate-100/80'
+                }`}
+              >
+                <Layers className="h-3.5 w-3.5" />
+                <span>Backend Firebase API</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'firebase' ? 'bg-orange-800 text-orange-200' : 'bg-orange-50 text-orange-700'
+                }`}>
+                  {vaultItems.filter(item => getParentCategory(item.category, item.title, item.secretValue) === 'firebase').length}
+                </span>
+              </button>
+
+              {/* AWS API */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('aws')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'aws'
+                    ? 'bg-amber-600 border-amber-600 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-705 hover:bg-slate-100/80'
+                }`}
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                <span>AWS API</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'aws' ? 'bg-amber-800 text-amber-200' : 'bg-amber-50 text-amber-700'
+                }`}>
+                  {vaultItems.filter(item => getParentCategory(item.category, item.title, item.secretValue) === 'aws').length}
+                </span>
+              </button>
+
+              {/* AI Generative API */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('ai')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'ai'
+                    ? 'bg-indigo-650 border-indigo-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-705 hover:bg-slate-100/80'
+                }`}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>AI Generative API</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'ai' ? 'bg-indigo-805 text-indigo-200' : 'bg-indigo-50 text-indigo-700'
+                }`}>
+                  {vaultItems.filter(item => getParentCategory(item.category, item.title, item.secretValue) === 'ai').length}
+                </span>
+              </button>
+
+              {/* All other APIs */}
+              <button
+                type="button"
+                onClick={() => setSelectedCategoryFilter('other')}
+                className={`flex items-center space-x-2 rounded-lg border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                  selectedCategoryFilter === 'other'
+                    ? 'bg-slate-600 border-slate-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-705 hover:bg-slate-100/80'
+                }`}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                <span>All other APIs</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                  selectedCategoryFilter === 'other' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {vaultItems.filter(item => getParentCategory(item.category, item.title, item.secretValue) === 'other').length}
+                </span>
+              </button>
+            </div>
+
+            {selectedCategoryFilter !== 'all' && (
+              <p className="text-[11px] text-slate-600 leading-normal bg-white border border-slate-150 rounded-lg p-2.5 animate-fadeIn shadow-xs font-medium">
+                <strong>Platform Info:</strong> {PARENT_CATEGORIES[selectedCategoryFilter].desc}
+              </p>
+            )}
+          </div>
+
           {/* Interactive Form: Manually Add Key */}
           {showAddForm && (
             <form onSubmit={handleManualAdd} className="rounded-xl border border-slate-200 bg-slate-50/60 p-5 space-y-4 animate-fadeIn">
@@ -313,14 +456,13 @@ export default function VaultView({}: VaultViewProps) {
                   <select
                     value={newKeyForm.category}
                     onChange={(e) => setNewKeyForm({ ...newKeyForm, category: e.target.value })}
-                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-indigo-500"
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:outline-indigo-500 font-semibold text-slate-700"
                   >
-                    <option value="Google Cloud / Maps Platform">Google Cloud / Maps</option>
-                    <option value="Stripe Payments">Stripe Payments</option>
-                    <option value="AWS Infrastructure">AWS Infrastructure</option>
-                    <option value="Slack Integration">Slack Integration</option>
-                    <option value="Database Credentials">Database Credentials</option>
-                    <option value="Custom API Key">Custom API Key</option>
+                    <option value="Client / IDE API">Client / IDE API — Web SDKs & Maps Platform</option>
+                    <option value="Backend Firebase API">Backend Firebase API — Firebase / Firestore</option>
+                    <option value="AWS API">AWS API — Amazon Cloud Web Services</option>
+                    <option value="AI Generative API">AI Generative API — Gemini / OpenAI / LLM hosts</option>
+                    <option value="All other APIs">All other APIs — Connection URLs, Databases & Webhooks</option>
                   </select>
                 </div>
 
@@ -401,17 +543,28 @@ export default function VaultView({}: VaultViewProps) {
           )}
 
           {/* List display */}
-          {vaultItems.length === 0 ? (
+          {filteredVaultItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-dashed border-slate-205 p-6 bg-slate-50/40">
               <KeyRound className="h-10 w-10 text-slate-305 mb-2" />
-              <h4 className="text-sm font-bold text-slate-900">Vault Registry Empty</h4>
+              <h4 className="text-sm font-bold text-slate-900">No Credentials Found</h4>
               <p className="max-w-md text-xs text-slate-550 leading-relaxed font-normal mt-1">
-                You do not have any saved findings. To add secrets here, execute an Audit Compliance scan first and click <strong>"Escrow to Vault"</strong> on any detected secret element.
+                {selectedCategoryFilter === 'all' 
+                  ? 'You do not have any saved findings. Execute a scan and escrow credentials, or click "Add Key manually" above.'
+                  : `There are currently no active secrets categorizing under "${PARENT_CATEGORIES[selectedCategoryFilter].label}".`}
               </p>
+              {selectedCategoryFilter !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryFilter('all')}
+                  className="mt-4 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold font-sans transition-all cursor-pointer"
+                >
+                  Clear filter selection
+                </button>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
-              {vaultItems.map((item) => (
+              {filteredVaultItems.map((item) => (
                 <div 
                   key={item.id} 
                   className={`rounded-xl border p-5 bg-white shadow-xs space-y-4 transition ${
@@ -425,7 +578,16 @@ export default function VaultView({}: VaultViewProps) {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-bold text-slate-950">{item.title}</span>
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 select-all font-mono">
+                        {(() => {
+                          const parentCatKey = getParentCategory(item.category, item.title, item.secretValue);
+                          const catSpec = PARENT_CATEGORIES[parentCatKey];
+                          return (
+                            <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${catSpec.color}`} title={catSpec.desc}>
+                              {catSpec.label}
+                            </span>
+                          );
+                        })()}
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 font-mono">
                           {item.category}
                         </span>
                         {item.compromised ? (

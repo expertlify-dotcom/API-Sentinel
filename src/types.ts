@@ -51,6 +51,15 @@ export interface ScanResult {
     description: string;
     remediation?: string;
   }[];
+  targetBreakdowns?: {
+    url: string;
+    hostname: string;
+    success: boolean;
+    error?: string;
+    score: number;
+    grade: string;
+    findingsCount: number;
+  }[];
 }
 
 export interface VaultItem {

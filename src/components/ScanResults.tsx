@@ -3,8 +3,10 @@ import { ScanResult, AuditFinding, EndpointFinding, VaultItem } from '../types';
 import { 
   ShieldCheck, ShieldAlert, AlertTriangle, Info, 
   Lock, Eye, EyeOff, Globe, Server, Code,
-  Download, Copy, CheckCircle2, ChevronRight, CornerDownRight, ExternalLink
+  Download, Copy, CheckCircle2, ChevronRight, CornerDownRight, ExternalLink,
+  Sparkles, Layers, Cloud, KeyRound
 } from 'lucide-react';
+import { PARENT_CATEGORIES, getParentCategory, CategoryKey } from '../utils/categoryHelper';
 
 interface ScanResultsProps {
   result: ScanResult;
@@ -15,6 +17,9 @@ export default function ScanResults({ result }: ScanResultsProps) {
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [copiedReport, setCopiedReport] = useState(false);
   const [escrowedIds, setEscrowedIds] = useState<Record<string, boolean>>({});
+  
+  // Custom API classification filter state
+  const [selectedScanFilter, setSelectedScanFilter] = useState<'all' | CategoryKey>('all');
 
   useEffect(() => {
     // Sync current vault state with displayed buttons
@@ -130,9 +135,17 @@ export default function ScanResults({ result }: ScanResultsProps) {
     md += `- **Medium Risk Vulnerabilities**: ${scorecard.mediumCount}\n`;
     md += `- **Low Risk Vulnerabilities**: ${scorecard.lowCount}\n\n`;
     
+    if (result.targetBreakdowns && result.targetBreakdowns.length > 0) {
+      md += `## Individual Target Security Scores Breakdown\n`;
+      result.targetBreakdowns.forEach((t) => {
+        md += `- **${t.hostname}** (${t.url}): Rating Score **${t.score}/100** | Grade **${t.grade}** | Findings: ${t.findingsCount} issues${t.success ? '' : ` (Audit Sniffing Failed: ${t.error})`}\n`;
+      });
+      md += `\n`;
+    }
+
     md += `## 2. Compliance Checklist Status\n`;
     complianceChecks.forEach((chk) => {
-      md += - `[${chk.passed ? 'X' : ' '}] ${chk.name}: ${chk.passed ? 'PASSED' : 'FAILED'} - ${chk.description}\n`;
+      md += `- [${chk.passed ? 'X' : ' '}] ${chk.name}: ${chk.passed ? 'PASSED' : 'FAILED'} - ${chk.description}\n`;
     });
     md += `\n`;
 
@@ -288,117 +301,263 @@ export default function ScanResults({ result }: ScanResultsProps) {
       <div className="space-y-6">
         {/* EXECUTIVE SUMMARY */}
         {activeResultsTab === 'summary' && (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            {/* Left Metrics */}
-            <div className="md:col-span-1 space-y-6">
-              {/* Scorecard Gauge */}
-              <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-xs">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Security Rating Score
-                </h3>
-                <div className="mt-4 flex items-center justify-center">
-                  <div className={`relative flex h-32 w-32 items-center justify-center rounded-full border-4 border-slate-100 shadow-inner md:h-36 md:w-36`}>
-                    <svg className="absolute inset-0 h-full w-full transform -rotate-90" viewBox="0 0 100 100">
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="45"
-                        fill="transparent"
-                        stroke="#f1f5f9"
-                        strokeWidth="5"
-                      />
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="45"
-                        fill="transparent"
-                        stroke={scorecard.score >= 90 ? '#10b981' : scorecard.score >= 75 ? '#f59e0b' : '#f43f5e'}
-                        strokeWidth="5"
-                        strokeDasharray={2 * Math.PI * 45}
-                        strokeDashoffset={2 * Math.PI * 45 * (1 - scorecard.score / 100)}
-                        strokeLinecap="round"
-                        className="transition-all duration-1000 ease-out"
-                      />
-                    </svg>
-                    <div className="text-center z-10">
-                      <span className="block text-4xl font-extrabold tracking-tight text-slate-900 md:text-5xl">
-                        {scorecard.grade}
+          <div className="space-y-6">
+            {/* Batch summary cards if breakdowns are included */}
+            {result.targetBreakdowns && result.targetBreakdowns.length > 0 && (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-4 animate-fadeIn">
+                <div className="border-b border-slate-150 pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                      <Globe className="h-4.5 w-4.5 text-indigo-600" />
+                      <span>Security Audit Batch Breakdown ({result.targetBreakdowns.length} site targets)</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Individual rating reports automatically mapped across crawled landing indexes
+                    </p>
+                  </div>
+                  <span className="self-start sm:self-auto rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">
+                    Compiled Summary Report
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {result.targetBreakdowns.map((target) => (
+                    <div 
+                      key={target.url}
+                      className={`rounded-xl border p-4 transition-all shadow-xs ${
+                        target.success 
+                          ? 'bg-slate-50/50 border-slate-200 hover:border-slate-350 hover:bg-slate-50/90' 
+                          : 'bg-rose-50/20 border-rose-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900 truncate max-w-[70%]" title={target.url}>
+                          {target.hostname}
+                        </span>
+                        <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider ${
+                          target.success 
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50' 
+                            : 'bg-rose-100 text-rose-700 border border-rose-200/50 animate-pulse'
+                        }`}>
+                          {target.success ? 'Success' : 'Offline'}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 flex items-end justify-between">
+                        <div>
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                            Findings Listed
+                          </p>
+                          <p className="text-sm font-bold text-slate-900">
+                            {target.findingsCount} issues
+                          </p>
+                        </div>
+
+                        <div className="text-right">
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
+                            Domain Grade
+                          </p>
+                          <div className="flex items-baseline space-x-1 justify-end mt-0.5">
+                            <span className={`text-base font-extrabold ${
+                              target.score >= 90 ? 'text-emerald-600' : target.score >= 75 ? 'text-amber-600' : 'text-rose-600'
+                            }`}>
+                              {target.grade}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-500">
+                              ({target.score}/100)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {!target.success && target.error && (
+                        <p className="mt-3 text-[10px] text-rose-600 font-semibold bg-rose-50 border border-rose-100 rounded-lg p-2 truncate" title={target.error}>
+                          Reason: {target.error}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              {/* Left Metrics */}
+              <div className="md:col-span-1 space-y-6">
+                {/* Scorecard Gauge */}
+                <div className="rounded-xl border border-slate-200 bg-white p-6 text-center shadow-xs">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Security Rating Score
+                  </h3>
+                  <div className="mt-4 flex items-center justify-center">
+                    <div className={`relative flex h-32 w-32 items-center justify-center rounded-full border-4 border-slate-100 shadow-inner md:h-36 md:w-36`}>
+                      <svg className="absolute inset-0 h-full w-full transform -rotate-90" viewBox="0 0 100 100">
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="45"
+                          fill="transparent"
+                          stroke="#f1f5f9"
+                          strokeWidth="5"
+                        />
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="45"
+                          fill="transparent"
+                          stroke={scorecard.score >= 90 ? '#10b981' : scorecard.score >= 75 ? '#f59e0b' : '#f43f5e'}
+                          strokeWidth="5"
+                          strokeDasharray={2 * Math.PI * 45}
+                          strokeDashoffset={2 * Math.PI * 45 * (1 - scorecard.score / 100)}
+                          strokeLinecap="round"
+                          className="transition-all duration-1000 ease-out"
+                        />
+                      </svg>
+                      <div className="text-center z-10">
+                        <span className="block text-4xl font-extrabold tracking-tight text-slate-900 md:text-5xl">
+                          {scorecard.grade}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500">
+                          {scorecard.score}/100 Grade
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs font-semibold text-slate-600">
+                    Threat exposure mitigation status
+                  </p>
+                </div>
+
+                {/* Severity Counts Grid */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs grid grid-cols-2 gap-4">
+                  <div className="rounded-lg bg-rose-50/50 border border-rose-100/60 p-3 text-center">
+                    <span className="block text-xs font-bold uppercase text-rose-600">Critical</span>
+                    <span className="mt-1 block text-2xl font-extrabold text-rose-950">{scorecard.highCount}</span>
+                  </div>
+                  <div className="rounded-lg bg-amber-50/50 border border-amber-100/60 p-3 text-center">
+                    <span className="block text-xs font-bold uppercase text-amber-600">Medium</span>
+                    <span className="mt-1 block text-2xl font-extrabold text-amber-950">{scorecard.mediumCount}</span>
+                  </div>
+                  <div className="rounded-lg bg-blue-50/50 border border-blue-100/60 p-3 text-center">
+                    <span className="block text-xs font-bold uppercase text-blue-600">Minor / Low</span>
+                    <span className="mt-1 block text-2xl font-extrabold text-blue-950">{scorecard.lowCount}</span>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 text-center">
+                    <span className="block text-xs font-bold uppercase text-slate-600">Info Log</span>
+                    <span className="mt-1 block text-2xl font-extrabold text-slate-950">{scorecard.infoCount}</span>
+                  </div>
+                </div>
+
+                {/* Corporate API Key Classification Overview Matrix */}
+                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-2 flex items-center space-x-1.5">
+                    <KeyRound className="h-4 w-4 text-indigo-505" />
+                    <span>Compliance Classification</span>
+                  </h4>
+                  
+                  <div className="space-y-2.5">
+                    {/* Client / IDE API */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/40 border border-emerald-100 text-xs animate-fadeIn">
+                      <div className="flex items-center space-x-2">
+                        <Code className="h-4 w-4 text-emerald-600" />
+                        <span className="font-bold text-slate-700">Client / IDE APIs</span>
+                      </div>
+                      <span className="font-extrabold text-slate-900 bg-emerald-100/60 px-2 py-0.5 rounded-md">
+                        {findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'client_ide').length}
                       </span>
-                      <span className="text-xs font-semibold text-slate-500">
-                        {scorecard.score}/100 Grade
+                    </div>
+
+                    {/* Backend Firebase API */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-orange-50/40 border border-orange-100 text-xs animate-fadeIn">
+                      <div className="flex items-center space-x-2">
+                        <Layers className="h-4 w-4 text-orange-600" />
+                        <span className="font-bold text-slate-700">Backend Firebase APIs</span>
+                      </div>
+                      <span className="font-extrabold text-slate-900 bg-orange-100/60 px-2 py-0.5 rounded-md">
+                        {findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'firebase').length}
+                      </span>
+                    </div>
+
+                    {/* AWS API */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-amber-50/40 border border-amber-100 text-xs animate-fadeIn">
+                      <div className="flex items-center space-x-2">
+                        <Cloud className="h-4 w-4 text-amber-550" />
+                        <span className="font-bold text-slate-700">AWS APIs</span>
+                      </div>
+                      <span className="font-extrabold text-slate-900 bg-amber-100/60 px-2 py-0.5 rounded-md">
+                        {findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'aws').length}
+                      </span>
+                    </div>
+
+                    {/* AI Generative API */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-indigo-50/40 border border-indigo-100 text-xs animate-fadeIn">
+                      <div className="flex items-center space-x-2">
+                        <Sparkles className="h-4 w-4 text-indigo-500" />
+                        <span className="font-bold text-slate-700">AI Generative APIs</span>
+                      </div>
+                      <span className="font-extrabold text-slate-900 bg-indigo-100/60 px-2 py-0.5 rounded-md">
+                        {findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'ai').length}
+                      </span>
+                    </div>
+
+                    {/* All other APIs */}
+                    <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs animate-fadeIn">
+                      <div className="flex items-center space-x-2">
+                        <Lock className="h-4 w-4 text-slate-550" />
+                        <span className="font-bold text-slate-705">All Other APIs</span>
+                      </div>
+                      <span className="font-extrabold text-slate-905 bg-slate-150 px-2 py-0.5 rounded-md">
+                        {findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'other').length}
                       </span>
                     </div>
                   </div>
                 </div>
-                <p className="mt-4 text-xs font-semibold text-slate-600">
-                  Threat exposure mitigation status
-                </p>
               </div>
 
-              {/* Severity Counts Grid */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs grid grid-cols-2 gap-4">
-                <div className="rounded-lg bg-rose-50/50 border border-rose-100/60 p-3 text-center">
-                  <span className="block text-xs font-bold uppercase text-rose-600">Critical</span>
-                  <span className="mt-1 block text-2xl font-extrabold text-rose-950">{scorecard.highCount}</span>
-                </div>
-                <div className="rounded-lg bg-amber-50/50 border border-amber-100/60 p-3 text-center">
-                  <span className="block text-xs font-bold uppercase text-amber-600">Medium</span>
-                  <span className="mt-1 block text-2xl font-extrabold text-amber-950">{scorecard.mediumCount}</span>
-                </div>
-                <div className="rounded-lg bg-blue-50/50 border border-blue-100/60 p-3 text-center">
-                  <span className="block text-xs font-bold uppercase text-blue-600">Minor / Low</span>
-                  <span className="mt-1 block text-2xl font-extrabold text-blue-950">{scorecard.lowCount}</span>
-                </div>
-                <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 text-center">
-                  <span className="block text-xs font-bold uppercase text-slate-600">Info Log</span>
-                  <span className="mt-1 block text-2xl font-extrabold text-slate-950">{scorecard.infoCount}</span>
-                </div>
-              </div>
-            </div>
+              {/* Right Cognitive Assessment Summary */}
+              <div className="md:col-span-2 space-y-6">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
+                  <h3 className="text-sm font-bold tracking-tight text-slate-900 flex items-center space-x-2 border-b border-slate-100 pb-3">
+                    <ShieldCheck className="h-4.5 w-4.5 text-indigo-600" />
+                    <span>Cognitive Compliance Evaluation</span>
+                  </h3>
+                  <p className="text-sm text-slate-700 leading-relaxed font-normal whitespace-pre-wrap">
+                    {scorecard.assessmentSummary}
+                  </p>
 
-            {/* Right Cognitive Assessment Summary */}
-            <div className="md:col-span-2 space-y-6">
-              <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-xs space-y-5">
-                <h3 className="text-sm font-bold tracking-tight text-slate-900 flex items-center space-x-2 border-b border-slate-100 pb-3">
-                  <ShieldCheck className="h-4.5 w-4.5 text-indigo-600" />
-                  <span>Cognitive Compliance Evaluation</span>
-                </h3>
-                <p className="text-sm text-slate-700 leading-relaxed font-normal whitespace-pre-wrap">
-                  {scorecard.assessmentSummary}
-                </p>
-
-                {/* Compliance Checking checklist */}
-                <div className="pt-3 space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                    SLA Compliance Guidelines Status
-                  </h4>
-                  <div className="space-y-2.5">
-                    {complianceChecks.map((chk, i) => (
-                      <div
-                        key={`${chk.name}-${i}`}
-                        className="flex items-start space-x-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3"
-                      >
-                        {chk.passed ? (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          </div>
-                        ) : (
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 shrink-0 mt-0.5">
-                            <ShieldAlert className="h-3.5 w-3.5" />
-                          </div>
-                        )}
-                        <div>
-                          <h5 className="text-xs font-bold text-slate-900">{chk.name}</h5>
-                          <p className="mt-0.5 text-xs text-slate-600">{chk.description}</p>
-                          {!chk.passed && chk.remediation && (
-                            <p className="mt-1.5 text-xs text-rose-700 font-semibold flex items-center">
-                              <CornerDownRight className="h-3 w-3 mr-1" />
-                              Fix: {chk.remediation}
-                            </p>
+                  {/* Compliance Checking checklist */}
+                  <div className="pt-3 space-y-3">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                      SLA Compliance Guidelines Status
+                    </h4>
+                    <div className="space-y-2.5">
+                      {complianceChecks.map((chk, i) => (
+                        <div
+                          key={`${chk.name}-${i}`}
+                          className="flex items-start space-x-3 rounded-lg border border-slate-100 bg-slate-50/60 p-3"
+                        >
+                          {chk.passed ? (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 shrink-0 mt-0.5">
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            </div>
+                          ) : (
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 shrink-0 mt-0.5">
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                            </div>
                           )}
+                          <div>
+                            <h5 className="text-xs font-bold text-slate-900">{chk.name}</h5>
+                            <p className="mt-0.5 text-xs text-slate-600">{chk.description}</p>
+                            {!chk.passed && chk.remediation && (
+                              <p className="mt-1.5 text-xs text-rose-700 font-semibold flex items-center">
+                                <CornerDownRight className="h-3 w-3 mr-1" />
+                                Fix: {chk.remediation}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -424,24 +583,119 @@ export default function ScanResults({ result }: ScanResultsProps) {
               </span>
             </div>
 
+            {/* Premium Category Filter row for findings */}
+            <div className="bg-slate-50 border-b border-slate-200 p-4 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest mr-2">
+                Classification Filters:
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('all')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'all'
+                    ? 'bg-slate-900 border-slate-900 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100/95'
+                }`}
+              >
+                All Findings ({findings.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('client_ide')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'client_ide'
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-100/95'
+                }`}
+              >
+                Client / IDE API ({findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'client_ide').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('firebase')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'firebase'
+                    ? 'bg-orange-600 border-orange-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-100/95'
+                }`}
+              >
+                Backend Firebase API ({findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'firebase').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('aws')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'aws'
+                    ? 'bg-amber-600 border-amber-600 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-100/95'
+                }`}
+              >
+                AWS API ({findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'aws').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('ai')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'ai'
+                    ? 'bg-indigo-650 border-indigo-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-655 hover:bg-slate-100/95'
+                }`}
+              >
+                AI Generative API ({findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'ai').length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedScanFilter('other')}
+                className={`px-3 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${
+                  selectedScanFilter === 'other'
+                    ? 'bg-slate-600 border-slate-650 text-white shadow-xs'
+                    : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-100/95'
+                }`}
+              >
+                All other APIs ({findings.filter(f => getParentCategory(f.category, f.title, f.evidence) === 'other').length})
+              </button>
+            </div>
+
             {findings.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                <ShieldCheck className="h-12 w-12 text-emerald-500 mb-2" />
+                <ShieldCheck className="h-12 w-12 text-emerald-500 mb-2 animate-bounce" />
                 <h4 className="text-sm font-bold text-slate-950">No API Key Leaks Identified</h4>
                 <p className="max-w-md mt-1 text-xs text-slate-500">
                   Static evaluation completed. This source code and public assets do not contain typical exposed credentials or database URL secrets.
                 </p>
               </div>
+            ) : findings.filter(f => selectedScanFilter === 'all' || getParentCategory(f.category, f.title, f.evidence) === selectedScanFilter).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 px-4 text-center animate-fadeIn">
+                <ShieldCheck className="h-12 w-12 text-emerald-500 mb-2 animate-bounce" />
+                <h4 className="text-sm font-bold text-slate-950">No API Key Leaks Under Selection</h4>
+                <p className="max-w-md mt-1 text-xs text-slate-500 font-semibold">
+                  Compliance analysis completed. Zero issues met the filter criteria for "{PARENT_CATEGORIES[selectedScanFilter]?.label}".
+                </p>
+              </div>
             ) : (
               <div className="divide-y divide-slate-150">
-                {findings.map((find) => (
+                {findings.filter(f => selectedScanFilter === 'all' || getParentCategory(f.category, f.title, f.evidence) === selectedScanFilter).map((find) => (
                   <div key={find.id} className="p-6 space-y-4 hover:bg-slate-50/50 transition-colors">
                     <div className="flex flex-col justify-between space-y-3 sm:flex-row sm:items-center sm:space-y-0">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="text-sm font-bold text-slate-900">{find.title}</h4>
                           {getSeverityBadge(find.severity)}
-                          <span className="rounded-md bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200/50">
+                          {(() => {
+                            const parentCatKey = getParentCategory(find.category, find.title, find.evidence);
+                            const catSpec = PARENT_CATEGORIES[parentCatKey];
+                            return (
+                              <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold ${catSpec.color}`} title={catSpec.desc}>
+                                {catSpec.label}
+                              </span>
+                            );
+                          })()}
+                          <span className="rounded-md bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-500 border border-slate-200/50 font-mono">
                             {find.category}
                           </span>
                         </div>

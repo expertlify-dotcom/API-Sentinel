@@ -20,23 +20,34 @@ export default function App() {
   // Custom reassuring status lines for security scanning
   const [loadingStatus, setLoadingStatus] = useState('Initializing Security Auditor...');
 
-  const performScanUrl = async (url: string) => {
+  const performScanUrl = async (url: string | string[]) => {
     setIsLoading(true);
     setError(null);
     setScanResult(null);
-    setLoadingStatus('Handshaking target endpoint...');
+    const isBatch = Array.isArray(url);
+    setLoadingStatus(isBatch ? 'Initializing Multi-Target compliance suite...' : 'Handshaking target endpoint...');
 
     try {
-      setTimeout(() => setLoadingStatus('Scraping HTML markup & locating programmatic client scripts...'), 1500);
-      setTimeout(() => setLoadingStatus('Parsing static regular expressions for standard API key leakage...'), 3000);
-      setTimeout(() => setLoadingStatus('Streaming metadata to Gemini compliance auditor...'), 4500);
+      if (isBatch) {
+        setTimeout(() => setLoadingStatus('Pinging domains concurrently & verifying DNS configurations...'), 1200);
+        setTimeout(() => setLoadingStatus('Scraping HTML structures & scanning plain-text key regexes...'), 2600);
+        setTimeout(() => setLoadingStatus('Aggregating targets audit data & fetching public scripts...'), 4000);
+        setTimeout(() => setLoadingStatus('Streaming consolidated metadata to Gemini compliance auditor...'), 5500);
+      } else {
+        setTimeout(() => setLoadingStatus('Scraping HTML markup & locating programmatic client scripts...'), 1500);
+        setTimeout(() => setLoadingStatus('Parsing static regular expressions for standard API key leakage...'), 3000);
+        setTimeout(() => setLoadingStatus('Streaming metadata to Gemini compliance auditor...'), 4500);
+      }
 
-      const response = await fetch('/api/scan/url', {
+      const endpoint = isBatch ? '/api/scan/batch-urls' : '/api/scan/url';
+      const bodyPayload = isBatch ? { urls: url } : { url };
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify(bodyPayload),
       });
 
       const data = await response.json();

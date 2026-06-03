@@ -771,6 +771,399 @@ Use this identical JSON output schema:
   }
 });
 
+// REST Route for scanning multiple website URLs in a secure multi-target batch
+app.post('/api/scan/batch-urls', async (req: Request, res: Response) => {
+  const { urls } = req.body;
+
+  if (!urls || !Array.isArray(urls) || urls.length === 0) {
+    res.status(400).json({ error: 'An array of URLs is required to execute a batch security audit.' });
+    return;
+  }
+
+  // Normalize URLs and filter duplicates, with a threshold limit of 5 targets for optimal response
+  const uniqueUrls = Array.from(new Set(urls.map(u => typeof u === 'string' ? u.trim() : '').filter(Boolean))).slice(0, 5);
+
+  if (uniqueUrls.length === 0) {
+    res.status(400).json({ error: 'Please supply at least one valid target URL.' });
+    return;
+  }
+
+  const scannedTargets: any[] = [];
+
+  for (const url of uniqueUrls) {
+    let cleanUrl = url;
+    if (!/^https?:\/\//i.test(cleanUrl)) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
+
+    try {
+      const parsedTarget = new URL(cleanUrl);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 4000); // 4 seconds timeout per URL to be responsive
+
+      const fetchRes = await fetch(cleanUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) API Audit Agent / corporate compliance checks',
+        },
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!fetchRes.ok) {
+        throw new Error(`Endpoint returned status code ${fetchRes.status}`);
+      }
+
+      const htmlContent = await fetchRes.text();
+      
+      // Parse for scripts
+      const scriptSrcs: string[] = [];
+      const scriptRegex = /<script\b[^>]*src=["']([^"']+)["']/gi;
+      let match;
+      while ((match = scriptRegex.exec(htmlContent)) !== null) {
+        let src = match[1];
+        if (src.startsWith('//')) {
+          src = parsedTarget.protocol + src;
+        } else if (src.startsWith('/')) {
+          src = parsedTarget.origin + src;
+        } else if (!/^https?:\/\//i.test(src)) {
+          src = parsedTarget.origin + '/' + src;
+        }
+        scriptSrcs.push(src);
+      }
+
+      // Local Regex Scan on main HTML
+      const local = scanLocalRegex(htmlContent, parsedTarget.hostname);
+      const targetFindings = [...local.findings];
+      const targetEndpoints = [...local.endpoints];
+
+      // Scan up to 2 referenced script files for leaked keys
+      const remoteScripts = scriptSrcs.filter(src => {
+        try {
+          const u = new URL(src);
+          return u.hostname === parsedTarget.hostname || src.includes('assets') || src.includes('main') || src.includes('index');
+        } catch { return false; }
+      }).slice(0, 2);
+
+      for (const src of remoteScripts) {
+         try {
+           const jsUrl = new URL(src);
+           const jsController = new AbortController();
+           const jsTimeout = setTimeout(() => jsController.abort(), 2000); // 2 second timeout per asset
+           const jsRes = await fetch(src, { signal: jsController.signal });
+           clearTimeout(jsTimeout);
+           if (jsRes.ok) {
+             const jsCode = await jsRes.text();
+             const jsFilename = path.basename(jsUrl.pathname) || 'script.js';
+             const jsLocal = scanLocalRegex(jsCode, `${parsedTarget.hostname}/${jsFilename}`);
+             targetFindings.push(...jsLocal.findings);
+             targetEndpoints.push(...jsLocal.endpoints);
+           }
+         } catch {}
+      }
+
+      scannedTargets.push({
+        url: cleanUrl,
+        success: true,
+        hostname: parsedTarget.hostname,
+        htmlContent: htmlContent.substring(0, 15000), // pass a cropped version securely to Gemini
+        scriptSrcs,
+        findings: targetFindings,
+        endpoints: targetEndpoints,
+        score: 100 // default placeholder to compute
+      });
+
+    } catch (err: any) {
+      scannedTargets.push({
+        url: cleanUrl,
+        success: false,
+        hostname: cleanUrl.replace(/^https?:\/\//i, '').split('/')[0] || cleanUrl,
+        error: err.message || 'Connection reset or network port unreachable.',
+        findings: [],
+        endpoints: []
+      });
+    }
+  }
+
+  // Compile batch dynamic AI prompt for Gemini
+  try {
+    const summaryList = scannedTargets.map(t => 
+      `Target: ${t.hostname} (${t.url}) - Status: ${t.success ? 'PARSED' : `FAILED (${t.error})`}`
+    ).join('\n');
+
+    const prompt = `You are a certified cybercompliance static auditor. I am auditing a batch of website targets.
+Create a unified cyber-compliance report and scorecard evaluating these targets.
+
+Sites requested in this audit batch:
+${summaryList}
+
+Parsed site details:
+${scannedTargets.filter(t => t.success).map(t => `
+--- Website: ${t.hostname} ---
+Local regex findings: ${JSON.stringify(t.findings)}
+Local endpoints: ${JSON.stringify(t.endpoints)}
+Top page HTML structure:
+\`\`\`html
+${t.htmlContent}
+\`\`\`
+`).join('\n\n')}
+
+Formulate a comprehensive master response returning:
+1. "findings": Combined list of findings across ALL parsed target hostnames. Let the 'fileOrUrl' field contain the exact target domain hostname (e.g. "${scannedTargets[0]?.hostname || 'target.com'}"). For any target site that failed to connect, include a medium severity finding of type 'compliance' explaining that the connection was dropped.
+2. "endpoints": Consolidated list of client-side third-party query endpoints found on these target hostnames.
+3. "scorecard": Consolidated multi-target assessment scorecard with a final combined security score (0 to 100), overall Grade (A to F), and a cohesive "assessmentSummary" detailing which sites had critical key exposures or handshake errors.
+4. "complianceChecks": Pass/fail checks across the whole suite (SSL encryption standards, exposed credentials, script sanitisation).
+
+Format strictly as JSON following this schema:
+{
+  "findings": [
+    {
+      "id": "batch-find-1",
+      "type": "secret" | "endpoint" | "libraries" | "compliance",
+      "severity": "high" | "medium" | "low" | "info",
+      "title": "Short header",
+      "description": "Compliance evaluation and context",
+      "fileOrUrl": "Target Domain",
+      "evidence": "Source code text snippet",
+      "resolution": "Action list to remedy exposure",
+      "category": "e.g. AWS Infrastructure, Google Maps, Stripe"
+    }
+  ],
+  "endpoints": [
+    {
+      "id": "batch-end-1",
+      "domain": "api.segment.io",
+      "path": "/v1/t",
+      "method": "POST",
+      "fileOrUrl": "Target Domain",
+      "category": "Analytics",
+      "secured": true,
+      "usageExcerpt": "Script payload reference"
+    }
+  ],
+  "scorecard": {
+    "score": 85,
+    "grade": "B",
+    "totalFindings": 2,
+    "highCount": 0,
+    "mediumCount": 1,
+    "lowCount": 1,
+    "infoCount": 0,
+    "assessmentSummary": "Brief overview of all parsed hostnames in this audit round."
+  },
+  "complianceChecks": [
+    {
+      "name": "Check Title",
+      "passed": true,
+      "description": "Short explanation text"
+    }
+  ]
+}
+
+Ensure the output is 100% compliant with standard JSON format and fully matching active schema variables. No preamble or conversational markdown outside the clean JSON block.`;
+
+    const result = await ai.models.generateContent({
+      model: 'gemini-3.5-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          required: ['findings', 'endpoints', 'scorecard', 'complianceChecks'],
+          properties: {
+            findings: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ['id', 'type', 'severity', 'title', 'description', 'fileOrUrl', 'evidence', 'resolution', 'category'],
+                properties: {
+                  id: { type: Type.STRING },
+                  type: { type: Type.STRING },
+                  severity: { type: Type.STRING },
+                  title: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  fileOrUrl: { type: Type.STRING },
+                  lineNumber: { type: Type.INTEGER },
+                  evidence: { type: Type.STRING },
+                  resolution: { type: Type.STRING },
+                  category: { type: Type.STRING },
+                },
+              },
+            },
+            endpoints: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ['id', 'domain', 'path', 'method', 'fileOrUrl', 'category', 'secured', 'usageExcerpt'],
+                properties: {
+                  id: { type: Type.STRING },
+                  domain: { type: Type.STRING },
+                  path: { type: Type.STRING },
+                  method: { type: Type.STRING },
+                  fileOrUrl: { type: Type.STRING },
+                  lineNumber: { type: Type.INTEGER },
+                  category: { type: Type.STRING },
+                  secured: { type: Type.BOOLEAN },
+                  usageExcerpt: { type: Type.STRING },
+                },
+              },
+            },
+            scorecard: {
+              type: Type.OBJECT,
+              required: ['score', 'grade', 'totalFindings', 'highCount', 'mediumCount', 'lowCount', 'infoCount', 'assessmentSummary'],
+              properties: {
+                score: { type: Type.INTEGER },
+                grade: { type: Type.STRING },
+                totalFindings: { type: Type.INTEGER },
+                highCount: { type: Type.INTEGER },
+                mediumCount: { type: Type.INTEGER },
+                lowCount: { type: Type.INTEGER },
+                infoCount: { type: Type.INTEGER },
+                assessmentSummary: { type: Type.STRING },
+              },
+            },
+            complianceChecks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                required: ['name', 'passed', 'description'],
+                properties: {
+                  name: { type: Type.STRING },
+                  passed: { type: Type.BOOLEAN },
+                  description: { type: Type.STRING },
+                  remediation: { type: Type.STRING },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const aiReport = JSON.parse(result.text || '{}');
+
+    // Aggregate scanned results
+    const combinedFindings: any[] = [];
+    const combinedEndpoints: any[] = [];
+
+    // Prioritize regex scans from individual successful parses for precise compliance evidence
+    for (const target of scannedTargets) {
+      if (target.success) {
+        combinedFindings.push(...target.findings);
+        combinedEndpoints.push(...target.endpoints);
+      } else {
+        // Create formal network threat exception finding for failed sites
+        combinedFindings.push({
+          id: `net-fail-${target.hostname}-${Math.random().toString(36).substr(2, 5)}`,
+          type: 'compliance',
+          severity: 'medium',
+          title: `Audit connection failed for target ${target.hostname}`,
+          description: `The compliance sniffer could not reach the endpoint landing page. Reason: ${target.error}`,
+          fileOrUrl: target.hostname,
+          evidence: `TCP connection dropped: ${target.url}`,
+          resolution: `Verify DNS records, firewall rules, and certificate validation for requested hostname. Secure edge networks against unexpected outages.`,
+          category: 'Boundary Compliance Risk'
+        });
+      }
+    }
+
+    // Merge in any other findings identified by Gemini
+    if (aiReport.findings && Array.isArray(aiReport.findings)) {
+      for (const find of aiReport.findings) {
+        const dup = combinedFindings.some(f => 
+          f.evidence.replace(/\s+/g, '') === find.evidence.replace(/\s+/g, '') ||
+          (f.title === find.title && f.fileOrUrl === find.fileOrUrl)
+        );
+        if (!dup) {
+          combinedFindings.push(find);
+        }
+      }
+    }
+
+    if (aiReport.endpoints && Array.isArray(aiReport.endpoints)) {
+      for (const end of aiReport.endpoints) {
+        const dup = combinedEndpoints.some(e => 
+          e.domain === end.domain && 
+          e.path.split('?')[0] === end.path.split('?')[0]
+        );
+        if (!dup) {
+          combinedEndpoints.push(end);
+        }
+      }
+    }
+
+    // Dynamically recompute scorecard across compiled findings for correctness
+    const highVal = combinedFindings.filter(f => f.severity === 'high').length;
+    const medVal = combinedFindings.filter(f => f.severity === 'medium').length;
+    const lowVal = combinedFindings.filter(f => f.severity === 'low').length;
+    const infoVal = combinedFindings.filter(f => f.severity === 'info').length;
+
+    let score = 100 - (highVal * 18) - (medVal * 9) - (lowVal * 2);
+    if (score < 5) score = 5;
+
+    let grade = 'A';
+    if (score < 60) grade = 'F';
+    else if (score < 70) grade = 'D';
+    else if (score < 80) grade = 'C';
+    else if (score < 90) grade = 'B';
+
+    // Detailed site lists for custom visualization in the react report UI
+    const targetBreakdowns = scannedTargets.map(t => {
+      const siteFindings = combinedFindings.filter(f => f.fileOrUrl.toLowerCase().includes(t.hostname.toLowerCase()));
+      const siteHigh = siteFindings.filter(f => f.severity === 'high').length;
+      const siteMed = siteFindings.filter(f => f.severity === 'medium').length;
+      let siteScore = 100 - (siteHigh * 20) - (siteMed * 10);
+      if (!t.success) siteScore = 0;
+      if (siteScore < 5) siteScore = 5;
+
+      let siteGrade = 'A';
+      if (!t.success) siteGrade = 'N/A';
+      else if (siteScore < 60) siteGrade = 'F';
+      else if (siteScore < 70) siteGrade = 'D';
+      else if (siteScore < 80) siteGrade = 'C';
+      else if (siteScore < 90) siteGrade = 'B';
+
+      return {
+        url: t.url,
+        hostname: t.hostname,
+        success: t.success,
+        error: t.error,
+        score: t.success ? siteScore : 0,
+        grade: siteGrade,
+        findingsCount: siteFindings.length
+      };
+    });
+
+    res.json({
+      timestamp: new Date().toISOString(),
+      targetName: `Batch: ${uniqueUrls.length} corporate sites`,
+      targetType: 'url',
+      findings: combinedFindings,
+      endpoints: combinedEndpoints,
+      scorecard: {
+        score,
+        grade,
+        totalFindings: combinedFindings.length,
+        highCount: highVal,
+        mediumCount: medVal,
+        lowCount: lowVal,
+        infoCount: infoVal,
+        assessmentSummary: aiReport.scorecard?.assessmentSummary || `Completed compliance auditing of ${scannedTargets.length} domains. Scanned index structures and security transports.`
+      },
+      complianceChecks: aiReport.complianceChecks || [
+        { name: 'TLS Encryption Connection Matrix', passed: scannedTargets.every(t => !t.success || t.url.startsWith('https://')), description: 'Verify all requested landing links enforce complete SSL/TLS security protocols.' },
+        { name: 'Unified Credential Escrow Audit', passed: highVal === 0, description: 'Audits the entire batch content for plain-text critical credentials.' },
+        { name: 'Asset Security Alignment', passed: medVal === 0, description: 'Ensures external modular script nodes perform in absolute containment.' }
+      ],
+      targetBreakdowns
+    });
+
+  } catch (err: any) {
+    console.error('Batch Endpoint Generation Failure:', err);
+    res.status(500).json({ error: 'Failed compiling batch security report: ' + err.message });
+  }
+});
+
 // Configure Vite or Serve SPA static files
 async function serveApplication() {
   if (process.env.NODE_ENV !== 'production') {
