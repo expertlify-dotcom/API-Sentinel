@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ScanResult, AuditFinding, EndpointFinding } from '../types';
+import { useState, useEffect } from 'react';
+import { ScanResult, AuditFinding, EndpointFinding, VaultItem } from '../types';
 import { 
   ShieldCheck, ShieldAlert, AlertTriangle, Info, 
   Lock, Eye, EyeOff, Globe, Server, Code,
@@ -14,6 +14,59 @@ export default function ScanResults({ result }: ScanResultsProps) {
   const [activeResultsTab, setActiveResultsTab] = useState<'summary' | 'secrets' | 'endpoints' | 'remediation'>('summary');
   const [revealedSecrets, setRevealedSecrets] = useState<Record<string, boolean>>({});
   const [copiedReport, setCopiedReport] = useState(false);
+  const [escrowedIds, setEscrowedIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Sync current vault state with displayed buttons
+    const loaded = localStorage.getItem('sentry_keys_vault');
+    if (loaded) {
+      try {
+        const vault: VaultItem[] = JSON.parse(loaded);
+        const mapped: Record<string, boolean> = {};
+        vault.forEach(item => {
+          // If title matches finding or secret matches evidence, mark as cataloged
+          mapped[item.id] = true;
+          // also map by custom pattern
+          mapped[item.title] = true;
+        });
+        setEscrowedIds(mapped);
+      } catch (err) {}
+    }
+  }, []);
+
+  const handleEscrow = (finding: AuditFinding) => {
+    const loaded = localStorage.getItem('sentry_keys_vault');
+    let currentVault: VaultItem[] = [];
+    if (loaded) {
+      try {
+        currentVault = JSON.parse(loaded);
+      } catch (err) {}
+    }
+
+    // Check if already escrowed
+    if (currentVault.some(v => v.evidence === finding.evidence)) {
+      setEscrowedIds(prev => ({ ...prev, [finding.id]: true }));
+      return;
+    }
+
+    const newItem: VaultItem = {
+      id: `vault-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      title: finding.title,
+      category: finding.category,
+      secretValue: finding.evidence,
+      evidence: finding.evidence,
+      origin: finding.fileOrUrl,
+      severity: finding.severity,
+      compromised: true,
+      notes: 'Automatically escrowed from active compliance run.'
+    };
+
+    const nextVault = [newItem, ...currentVault];
+    localStorage.setItem('sentry_keys_vault', JSON.stringify(nextVault));
+    setEscrowedIds(prev => ({ ...prev, [finding.id]: true }));
+  };
+
 
   const { scorecard, findings, endpoints, complianceChecks, targetName, targetType } = result;
 
@@ -396,6 +449,21 @@ export default function ScanResults({ result }: ScanResultsProps) {
                           <Server className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
                           <span>File: {find.fileOrUrl} {find.lineNumber ? `(Line ${find.lineNumber})` : ''}</span>
                         </p>
+                      </div>
+
+                      <div className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleEscrow(find)}
+                          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                            escrowedIds[find.id] || escrowedIds[find.title]
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 cursor-default'
+                              : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 cursor-pointer shadow-xs'
+                          }`}
+                        >
+                          <Lock className="h-3 w-3" />
+                          <span>{escrowedIds[find.id] || escrowedIds[find.title] ? 'Escrowed to Vault' : 'Escrow to Vault'}</span>
+                        </button>
                       </div>
                     </div>
 

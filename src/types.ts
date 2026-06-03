@@ -52,3 +52,17 @@ export interface ScanResult {
     remediation?: string;
   }[];
 }
+
+export interface VaultItem {
+  id: string;
+  timestamp: string;
+  title: string;
+  category: string;
+  secretValue: string;
+  evidence: string;
+  origin: string; // scanned domain or code file name
+  severity: Severity;
+  compromised: boolean; // has this been leaked in the public scans
+  notes?: string;
+}
+
